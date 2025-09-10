@@ -4,10 +4,15 @@ import { createNextApiHandler } from "@trpc/server/adapters/next";
 import { appRouter } from "@/server/routers/_app";
 import { createContext } from "@/server/context";
 
-const handler = createNextApiHandler({
+// TRPC handler
+const trpcHandler = createNextApiHandler({
   router: appRouter,
   createContext,
 });
 
-// Explicit cast so Next.js/Vercel accepts it
-export default handler as NextApiHandler;
+// Force Next.js to accept it as an API handler
+const handler: NextApiHandler = (req, res) => {
+  return (trpcHandler as unknown as NextApiHandler)(req, res);
+};
+
+export default handler;
