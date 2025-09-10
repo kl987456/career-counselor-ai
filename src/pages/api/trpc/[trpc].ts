@@ -4,10 +4,11 @@ import type { NextApiHandler } from "next";
 import { appRouter } from "@/server/routers/_app";
 import { createContext } from "@/server/context";
 
-// Explicitly type this as a Next.js API handler
+// Force the type explicitly
 const handler: NextApiHandler = createNextApiHandler({
   router: appRouter,
   createContext,
 });
 
+// Export with explicit type so Next.js accepts it
 export default handler;
