@@ -8,18 +8,18 @@ const openai = new OpenAI({
 });
 
 // Infer TypeScript types for frontend
-export type ChatSession = Prisma.ChatSessionGetPayload<{}>;
-export type Message = Prisma.MessageGetPayload<{}>;
+export type ChatSession = Prisma.ChatSessionGetPayload<object>;
+export type Message = Prisma.MessageGetPayload<object>;
 
 export const chatRouter = router({
   createSession: publicProcedure
-    .input(z.object({ title: z.string() }))
+    .input(z.object({ title: z.string().min(1, "Title is required") }))
     .mutation(async ({ ctx, input }) => {
       return ctx.prisma.chatSession.create({ data: { title: input.title } });
     }),
 
   deleteSession: publicProcedure
-    .input(z.object({ sessionId: z.string() }))
+    .input(z.object({ sessionId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       await ctx.prisma.message.deleteMany({
         where: { sessionId: input.sessionId },
@@ -30,8 +30,8 @@ export const chatRouter = router({
   sendMessage: publicProcedure
     .input(
       z.object({
-        sessionId: z.string(),
-        message: z.string(),
+        sessionId: z.string().uuid(),
+        message: z.string().min(1, "Message cannot be empty"),
         sender: z.enum(["USER", "AI"]),
       })
     )
@@ -50,31 +50,24 @@ export const chatRouter = router({
             const completion = await openai.chat.completions.create({
               model: "gpt-4o-mini",
               messages: [
-                {
-                  role: "system",
-                  content: "You are a helpful AI career counselor.",
-                },
+                { role: "system", content: "You are a helpful AI career counselor." },
                 { role: "user", content: input.message },
               ],
             });
 
-            const aiMessage: string =
+            const aiMessage =
               completion.choices?.[0]?.message?.content ?? "AI could not respond.";
 
             await ctx.prisma.message.create({
-              data: {
-                sessionId: input.sessionId,
-                content: aiMessage,
-                sender: "AI",
-              },
+              data: { sessionId: input.sessionId, content: aiMessage, sender: "AI" },
             });
           } catch (error: unknown) {
-            const message = error instanceof Error ? error.message : "Unknown error";
-            console.error("OpenAI API error:", message);
+            const msg = error instanceof Error ? error.message : "Unknown error";
+            console.error("OpenAI API error:", msg);
             await ctx.prisma.message.create({
               data: {
                 sessionId: input.sessionId,
-                content: `AI error: ${message}`,
+                content: `AI error: ${msg}`,
                 sender: "AI",
               },
             });
@@ -86,13 +79,13 @@ export const chatRouter = router({
     }),
 
   deleteMessage: publicProcedure
-    .input(z.object({ messageId: z.string() }))
+    .input(z.object({ messageId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       return ctx.prisma.message.delete({ where: { id: input.messageId } });
     }),
 
   getMessages: publicProcedure
-    .input(z.object({ sessionId: z.string() }))
+    .input(z.object({ sessionId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       return ctx.prisma.message.findMany({
         where: { sessionId: input.sessionId },
