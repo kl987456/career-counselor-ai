@@ -4,6 +4,7 @@ import { trpc } from "@/utils/trpc";
 import { AiFillDelete } from "react-icons/ai";
 import { BsSun, BsMoon } from "react-icons/bs";
 import toast, { Toaster } from "react-hot-toast";
+import type { ChatSession, Message } from "@/server/routers/chat"; // import types
 
 const ChatSessions: React.FC = () => {
   const { data: sessions, refetch: refetchSessions } = trpc.chat.getSessions.useQuery();
@@ -35,7 +36,6 @@ const ChatSessions: React.FC = () => {
     scrollToBottom();
   }, [messages]);
 
-  // Poll messages every 1.5 seconds to fetch AI reply
   useEffect(() => {
     const interval = setInterval(() => {
       if (selectedSessionId) refetchMessages();
@@ -60,14 +60,11 @@ const ChatSessions: React.FC = () => {
   const handleSendMessage = async (input: string) => {
     if (!selectedSessionId || !input.trim()) return;
 
-    // Immediately show user message
     await sendMessage.mutateAsync({ sessionId: selectedSessionId, message: input, sender: "USER" });
     scrollToBottom();
 
-    // Show AI typing animation
     setAiTyping(true);
 
-    // Poll for AI response until it's found
     const checkAi = setInterval(async () => {
       const latestMessages = await refetchMessages();
       const lastMsg = latestMessages.data?.[latestMessages.data.length - 1];
@@ -127,7 +124,7 @@ const ChatSessions: React.FC = () => {
         )}
 
         <div className="flex-1 overflow-y-auto space-y-3">
-          {sessions?.map((s) => (
+          {sessions?.map((s: ChatSession) => (
             <div
               key={s.id}
               className={`p-3 rounded-xl cursor-pointer flex justify-between items-center transition-all transform hover:scale-[1.02] ${
@@ -171,7 +168,7 @@ const ChatSessions: React.FC = () => {
             <div className="text-gray-400 text-center italic">Select a session to see messages</div>
           ) : (
             <ul className="flex flex-col space-y-3">
-              {messages?.map((m) => (
+              {messages?.map((m: Message) => (
                 <li
                   key={m.id}
                   className={`relative z-10 p-3 rounded-2xl shadow-md max-w-[70%] group transition-all ${
@@ -201,7 +198,6 @@ const ChatSessions: React.FC = () => {
                 </li>
               ))}
 
-              {/* AI Typing Animation */}
               {aiTyping && (
                 <li className={`p-3 rounded-xl flex items-center gap-2 ${darkMode ? "bg-gray-700 text-white" : "bg-gray-300 text-black"}`}>
                   <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></span>
