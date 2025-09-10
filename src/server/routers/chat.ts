@@ -1,10 +1,15 @@
 import { z } from "zod";
 import { router, publicProcedure } from "../trpc";
 import OpenAI from "openai";
+import type { Prisma } from "@prisma/client";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+// Infer TypeScript types for frontend
+export type ChatSession = Prisma.ChatSessionGetPayload<{}>;
+export type Message = Prisma.MessageGetPayload<{}>;
 
 export const chatRouter = router({
   createSession: publicProcedure
@@ -54,8 +59,7 @@ export const chatRouter = router({
             });
 
             const aiMessage: string =
-              completion.choices?.[0]?.message?.content ??
-              "AI could not respond.";
+              completion.choices?.[0]?.message?.content ?? "AI could not respond.";
 
             await ctx.prisma.message.create({
               data: {
@@ -65,8 +69,7 @@ export const chatRouter = router({
               },
             });
           } catch (error: unknown) {
-            const message =
-              error instanceof Error ? error.message : "Unknown error";
+            const message = error instanceof Error ? error.message : "Unknown error";
             console.error("OpenAI API error:", message);
             await ctx.prisma.message.create({
               data: {
