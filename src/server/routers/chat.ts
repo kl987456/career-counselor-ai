@@ -29,6 +29,7 @@ export const chatRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Save user message immediately
       const message = await ctx.prisma.message.create({
         data: {
           sessionId: input.sessionId,
@@ -37,6 +38,7 @@ export const chatRouter = router({
         },
       });
 
+      // Async AI response
       if (input.sender === "USER") {
         (async () => {
           try {
@@ -48,8 +50,7 @@ export const chatRouter = router({
               ],
             });
 
-            const aiMessage =
-              completion.choices?.[0]?.message?.content ?? "AI could not respond.";
+            const aiMessage = completion.choices?.[0]?.message?.content ?? "AI could not respond.";
 
             await ctx.prisma.message.create({
               data: {
@@ -58,13 +59,13 @@ export const chatRouter = router({
                 sender: "AI",
               },
             });
-          } catch (err: unknown) {
-            const errorMessage = err instanceof Error ? err.message : "Unknown error";
-            console.error("OpenAI API error:", errorMessage);
+          } catch (err) {
+            const error = err instanceof Error ? err : new Error("Unknown error");
+            console.error("OpenAI API error:", error.message);
             await ctx.prisma.message.create({
               data: {
                 sessionId: input.sessionId,
-                content: `AI error: ${errorMessage}`,
+                content: `AI error: ${error.message}`,
                 sender: "AI",
               },
             });
@@ -72,7 +73,7 @@ export const chatRouter = router({
         })();
       }
 
-      return message;
+      return message; // immediately return user message
     }),
 
   deleteMessage: publicProcedure
