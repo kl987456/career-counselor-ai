@@ -5,13 +5,8 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-type AIResponse = {
-  reply: string;
-};
-
-type ErrorResponse = {
-  error: string;
-};
+type AIResponse = { reply: string };
+type ErrorResponse = { error: string };
 
 export default async function handler(
   req: NextApiRequest,
@@ -34,13 +29,14 @@ export default async function handler(
       messages: [{ role: "user", content: body.message }],
     });
 
-    const reply =
+    const reply: string =
       completion.choices?.[0]?.message?.content?.trim() ?? "No reply";
 
     return res.status(200).json({ reply });
-  } catch (err) {
-    const error = err instanceof Error ? err.message : "Unknown error";
-    console.error("AI API error:", error);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unknown error occurred";
+    console.error("AI API error:", message);
     return res.status(500).json({ error: "Something went wrong while contacting AI" });
   }
 }

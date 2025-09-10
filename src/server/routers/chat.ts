@@ -48,7 +48,7 @@ export const chatRouter = router({
               ],
             });
 
-            const aiMessage =
+            const aiMessage: string =
               completion.choices?.[0]?.message?.content ?? "AI could not respond.";
 
             await ctx.prisma.message.create({
@@ -58,13 +58,13 @@ export const chatRouter = router({
                 sender: "AI",
               },
             });
-          } catch (err) {
-            const error = err instanceof Error ? err.message : "Unknown error";
-            console.error("OpenAI API error:", error);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "Unknown error";
+            console.error("OpenAI API error:", message);
             await ctx.prisma.message.create({
               data: {
                 sessionId: input.sessionId,
-                content: `AI error: ${error}`,
+                content: `AI error: ${message}`,
                 sender: "AI",
               },
             });
