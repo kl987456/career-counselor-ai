@@ -2,31 +2,40 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import OpenAI from "openai";
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY, // keep secret in .env.local
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+type AIResponse = { reply: string };
+type ErrorResponse = { error: string };
+
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse<AIResponse | ErrorResponse>
+) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
   try {
-    const { message } = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+    const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+    const { message } = body as { message?: string };
 
     if (!message || typeof message !== "string") {
       return res.status(400).json({ error: "Message is required" });
     }
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // can change to "gpt-4o" for better responses
+      model: "gpt-4o-mini",
       messages: [{ role: "user", content: message }],
     });
 
-    const reply = completion.choices[0]?.message?.content?.trim() || "No reply";
+    const reply =
+      completion.choices?.[0]?.message?.content?.trim() ?? "No reply";
 
     return res.status(200).json({ reply });
-  } catch (err: any) {
-    console.error("AI API error:", err);
-    return res.status(500).json({ error: "Something went wrong while contacting AI" });
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : "Unknown error";
+    console.error("AI API error:", errorMessage);
+    return res.status(500).json({ error: errorMessage });
   }
 }

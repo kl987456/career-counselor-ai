@@ -1,4 +1,3 @@
-// src/server/routers/chat.ts
 import { z } from "zod";
 import { router, publicProcedure } from "../trpc";
 import OpenAI from "openai";
@@ -30,7 +29,6 @@ export const chatRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Save user message immediately
       const message = await ctx.prisma.message.create({
         data: {
           sessionId: input.sessionId,
@@ -39,7 +37,6 @@ export const chatRouter = router({
         },
       });
 
-      // Async AI response (fire-and-forget)
       if (input.sender === "USER") {
         (async () => {
           try {
@@ -51,7 +48,8 @@ export const chatRouter = router({
               ],
             });
 
-            const aiMessage = completion.choices[0].message?.content || "AI could not respond.";
+            const aiMessage =
+              completion.choices?.[0]?.message?.content ?? "AI could not respond.";
 
             await ctx.prisma.message.create({
               data: {
@@ -60,12 +58,13 @@ export const chatRouter = router({
                 sender: "AI",
               },
             });
-          } catch (error: any) {
-            console.error("OpenAI API error:", error.message);
+          } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : "Unknown error";
+            console.error("OpenAI API error:", errorMessage);
             await ctx.prisma.message.create({
               data: {
                 sessionId: input.sessionId,
-                content: `AI error: ${error.message}`,
+                content: `AI error: ${errorMessage}`,
                 sender: "AI",
               },
             });
@@ -73,7 +72,7 @@ export const chatRouter = router({
         })();
       }
 
-      return message; // immediately return user message
+      return message;
     }),
 
   deleteMessage: publicProcedure
