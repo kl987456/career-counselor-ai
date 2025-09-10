@@ -16,7 +16,9 @@ export const chatRouter = router({
   deleteSession: publicProcedure
     .input(z.object({ sessionId: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      await ctx.prisma.message.deleteMany({ where: { sessionId: input.sessionId } });
+      await ctx.prisma.message.deleteMany({
+        where: { sessionId: input.sessionId },
+      });
       return ctx.prisma.chatSession.delete({ where: { id: input.sessionId } });
     }),
 
@@ -43,13 +45,17 @@ export const chatRouter = router({
             const completion = await openai.chat.completions.create({
               model: "gpt-4o-mini",
               messages: [
-                { role: "system", content: "You are a helpful AI career counselor." },
+                {
+                  role: "system",
+                  content: "You are a helpful AI career counselor.",
+                },
                 { role: "user", content: input.message },
               ],
             });
 
             const aiMessage: string =
-              completion.choices?.[0]?.message?.content ?? "AI could not respond.";
+              completion.choices?.[0]?.message?.content ??
+              "AI could not respond.";
 
             await ctx.prisma.message.create({
               data: {
@@ -58,8 +64,9 @@ export const chatRouter = router({
                 sender: "AI",
               },
             });
-          } catch (error) {
-            const message = error instanceof Error ? error.message : "Unknown error";
+          } catch (error: unknown) {
+            const message =
+              error instanceof Error ? error.message : "Unknown error";
             console.error("OpenAI API error:", message);
             await ctx.prisma.message.create({
               data: {

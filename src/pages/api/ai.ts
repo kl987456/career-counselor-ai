@@ -33,10 +33,12 @@ export default async function handler(
       completion.choices?.[0]?.message?.content?.trim() ?? "No reply";
 
     return res.status(200).json({ reply });
-  } catch (error) {
+  } catch (error: unknown) {
     const message =
       error instanceof Error ? error.message : "Unknown error occurred";
     console.error("AI API error:", message);
-    return res.status(500).json({ error: "Something went wrong while contacting AI" });
+    return res
+      .status(500)
+      .json({ error: "Something went wrong while contacting AI" });
   }
 }
