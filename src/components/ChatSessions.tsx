@@ -32,9 +32,7 @@ const ChatSessions: React.FC = () => {
     }, 50);
   };
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  useEffect(() => scrollToBottom(), [messages]);
 
   useEffect(() => {
     const interval = setInterval(() => {
