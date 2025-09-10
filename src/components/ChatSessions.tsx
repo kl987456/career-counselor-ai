@@ -4,7 +4,7 @@ import { trpc } from "@/utils/trpc";
 import { AiFillDelete } from "react-icons/ai";
 import { BsSun, BsMoon } from "react-icons/bs";
 import toast, { Toaster } from "react-hot-toast";
-import type { ChatSession, Message } from "@/server/routers/chat"; // import types
+import type { ChatSession, Message } from "@/server/routers/chat";
 
 const ChatSessions: React.FC = () => {
   const { data: sessions, refetch: refetchSessions } = trpc.chat.getSessions.useQuery();
@@ -51,8 +51,7 @@ const ChatSessions: React.FC = () => {
       setNewSessionTitle("");
       refetchSessions();
       toast.success("Session created ✅");
-    } catch (err) {
-      console.error(err);
+    } catch {
       toast.error("Failed to create session ❌");
     }
   };
@@ -62,7 +61,6 @@ const ChatSessions: React.FC = () => {
 
     await sendMessage.mutateAsync({ sessionId: selectedSessionId, message: input, sender: "USER" });
     scrollToBottom();
-
     setAiTyping(true);
 
     const checkAi = setInterval(async () => {
