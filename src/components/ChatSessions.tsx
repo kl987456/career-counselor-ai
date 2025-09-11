@@ -1,45 +1,62 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
-import { trpc } from "@/utils/trpc";
+import { trpc } from "@/server/utils/trpc";
 import { AiFillDelete } from "react-icons/ai";
 import { BsSun, BsMoon } from "react-icons/bs";
+import { motion } from "framer-motion";
 import toast, { Toaster } from "react-hot-toast";
 import type { ChatSession, Message } from "@/server/routers/chat";
 
+// Emojis for fun
+const USER_EMOJI = "🙋‍♂️";
+const AI_EMOJI = "🤖";
+const ERROR_EMOJI = "⚠️";
+
 const ChatSessions: React.FC = () => {
-  const { data: sessions, refetch: refetchSessions } = trpc.chat.getSessions.useQuery();
+  const utils = trpc.useUtils();
+
+  const { data: sessions } = trpc.chat.getSessions.useQuery();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [newSessionTitle, setNewSessionTitle] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [aiTyping, setAiTyping] = useState(false);
 
-  const { data: messages, refetch: refetchMessages } = trpc.chat.getMessages.useQuery(
+  const { data: messages } = trpc.chat.getMessages.useQuery(
     { sessionId: selectedSessionId || "" },
     { enabled: !!selectedSessionId }
   );
 
-  const sendMessage = trpc.chat.sendMessage.useMutation();
-  const createSession = trpc.chat.createSession.useMutation();
-  const deleteSession = trpc.chat.deleteSession.useMutation();
-  const deleteMessage = trpc.chat.deleteMessage.useMutation();
+  const sendMessage = trpc.chat.sendMessage.useMutation({
+    onSuccess: () => utils.chat.getMessages.invalidate({ sessionId: selectedSessionId! }),
+  });
+  const createSession = trpc.chat.createSession.useMutation({
+    onSuccess: () => utils.chat.getSessions.invalidate(),
+  });
+  const deleteSession = trpc.chat.deleteSession.useMutation({
+    onSuccess: () => utils.chat.getSessions.invalidate(),
+  });
+  const deleteMessage = trpc.chat.deleteMessage.useMutation({
+    onSuccess: () => utils.chat.getMessages.invalidate({ sessionId: selectedSessionId! }),
+  });
 
   const messageEndRef = useRef<HTMLDivElement>(null);
-
   const scrollToBottom = () => {
     setTimeout(() => {
       messageEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-    }, 50);
+    }, 100);
   };
 
   useEffect(() => scrollToBottom(), [messages]);
 
+  // Periodic refresh for AI messages
   useEffect(() => {
+    if (!selectedSessionId) return;
     const interval = setInterval(() => {
-      if (selectedSessionId) refetchMessages();
-    }, 1500);
+      utils.chat.getMessages.invalidate({ sessionId: selectedSessionId });
+    }, 3000);
     return () => clearInterval(interval);
-  }, [selectedSessionId, refetchMessages]);
+  }, [selectedSessionId, utils]);
 
   const handleCreateSession = async () => {
     if (!newSessionTitle.trim()) return;
@@ -47,7 +64,6 @@ const ChatSessions: React.FC = () => {
       const session = await createSession.mutateAsync({ title: newSessionTitle });
       setSelectedSessionId(session.id);
       setNewSessionTitle("");
-      refetchSessions();
       toast.success("Session created ✅");
     } catch {
       toast.error("Failed to create session ❌");
@@ -57,19 +73,25 @@ const ChatSessions: React.FC = () => {
   const handleSendMessage = async (input: string) => {
     if (!selectedSessionId || !input.trim()) return;
 
-    await sendMessage.mutateAsync({ sessionId: selectedSessionId, message: input, sender: "USER" });
-    scrollToBottom();
     setAiTyping(true);
+    try {
+      await sendMessage.mutateAsync({ sessionId: selectedSessionId, message: input, sender: "USER" });
+      scrollToBottom();
 
-    const checkAi = setInterval(async () => {
-      const latestMessages = await refetchMessages();
-      const lastMsg = latestMessages.data?.[latestMessages.data.length - 1];
-      if (lastMsg?.sender === "AI") {
-        setAiTyping(false);
-        clearInterval(checkAi);
-        scrollToBottom();
-      }
-    }, 1000);
+      // Poll until AI responds
+      const checkAi = setInterval(async () => {
+        const latest = await utils.chat.getMessages.fetch({ sessionId: selectedSessionId });
+        const lastMsg = latest?.[latest.length - 1];
+        if (lastMsg?.sender === "AI") {
+          setAiTyping(false);
+          clearInterval(checkAi);
+          scrollToBottom();
+        }
+      }, 1000);
+    } catch {
+      setAiTyping(false);
+      toast.error("Failed to send message ❌");
+    }
   };
 
   const containerBg = darkMode ? "bg-gray-900 text-white" : "bg-gray-100 text-black";
@@ -143,7 +165,6 @@ const ChatSessions: React.FC = () => {
                     e.stopPropagation();
                     await deleteSession.mutateAsync({ sessionId: s.id });
                     if (s.id === selectedSessionId) setSelectedSessionId(null);
-                    refetchSessions();
                   }}
                 />
               )}
@@ -164,43 +185,61 @@ const ChatSessions: React.FC = () => {
             <div className="text-gray-400 text-center italic">Select a session to see messages</div>
           ) : (
             <ul className="flex flex-col space-y-3">
-              {messages?.map((m: Message) => (
-                <li
-                  key={m.id}
-                  className={`relative z-10 p-3 rounded-2xl shadow-md max-w-[70%] group transition-all ${
-                    m.sender === "USER"
-                      ? "bg-blue-400 text-white self-end"
-                      : darkMode
-                      ? "bg-gray-700 text-white self-start"
-                      : "bg-gray-200 text-black self-start"
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-full bg-purple-400 flex items-center justify-center text-white font-bold">{m.sender === "USER" ? "U" : "AI"}</div>
-                    <div>
-                      <p>
-                        <strong>{m.sender === "USER" ? "You" : "AI"}:</strong> {m.content}
-                      </p>
-                      <div className="text-xs opacity-70 mt-1">{new Date(m.createdAt).toLocaleTimeString()}</div>
+              {messages?.map((m: Message) => {
+                const emoji = m.sender === "USER" ? USER_EMOJI : m.content.includes("error") ? ERROR_EMOJI : AI_EMOJI;
+                return (
+                  <motion.li
+                    key={m.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className={`relative z-10 p-3 rounded-2xl shadow-md max-w-[70%] group ${
+                      m.sender === "USER"
+                        ? "bg-blue-400 text-white self-end"
+                        : darkMode
+                        ? "bg-gray-700 text-white self-start"
+                        : "bg-gray-200 text-black self-start"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-full bg-purple-400 flex items-center justify-center text-white font-bold">
+                        {emoji}
+                      </div>
+                      <div>
+                        <p>
+                          <strong>{m.sender === "USER" ? "You" : "AI"}:</strong> {m.content}
+                        </p>
+                        <div className="flex gap-2 mt-2 text-lg">
+                          <span className="cursor-pointer hover:scale-125 transition">👍</span>
+                          <span className="cursor-pointer hover:scale-125 transition">😂</span>
+                          <span className="cursor-pointer hover:scale-125 transition">❤️</span>
+                        </div>
+                        <div className="text-xs opacity-70 mt-1">{new Date(m.createdAt).toLocaleTimeString()}</div>
+                      </div>
                     </div>
-                  </div>
-                  <AiFillDelete
-                    className="absolute -top-2 -right-2 text-red-500 cursor-pointer hover:text-red-700 hover:scale-125 transition-transform opacity-0 group-hover:opacity-100"
-                    onClick={async () => {
-                      await deleteMessage.mutateAsync({ messageId: m.id });
-                      refetchMessages();
-                    }}
-                  />
-                </li>
-              ))}
+                    <AiFillDelete
+                      className="absolute -top-2 -right-2 text-red-500 cursor-pointer hover:text-red-700 hover:scale-125 transition-transform opacity-0 group-hover:opacity-100"
+                      onClick={async () => {
+                        await deleteMessage.mutateAsync({ messageId: m.id });
+                      }}
+                    />
+                  </motion.li>
+                );
+              })}
 
               {aiTyping && (
-                <li className={`p-3 rounded-xl flex items-center gap-2 ${darkMode ? "bg-gray-700 text-white" : "bg-gray-300 text-black"}`}>
-                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></span>
-                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-150"></span>
-                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-300"></span>
-                  <span className="ml-2 text-sm opacity-70 italic">AI is thinking...</span>
-                </li>
+                <motion.li
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className={`p-3 rounded-xl flex items-center gap-2 ${
+                    darkMode ? "bg-gray-700 text-white" : "bg-gray-300 text-black"
+                  }`}
+                >
+                  <motion.span className="w-2 h-2 bg-gray-400 rounded-full" animate={{ y: [0, -6, 0] }} transition={{ duration: 0.6, repeat: Infinity }} />
+                  <motion.span className="w-2 h-2 bg-gray-400 rounded-full" animate={{ y: [0, -6, 0] }} transition={{ duration: 0.6, repeat: Infinity, delay: 0.2 }} />
+                  <motion.span className="w-2 h-2 bg-gray-400 rounded-full" animate={{ y: [0, -6, 0] }} transition={{ duration: 0.6, repeat: Infinity, delay: 0.4 }} />
+                  <span className="ml-2 text-sm opacity-70 italic">AI is typing...</span>
+                </motion.li>
               )}
 
               <div ref={messageEndRef} />
@@ -236,7 +275,7 @@ const ChatSessions: React.FC = () => {
               type="submit"
               className="bg-blue-500 text-white px-6 py-2 rounded-xl shadow hover:scale-105 transform transition-all"
             >
-              Send
+              Send 🚀
             </button>
           </form>
         )}

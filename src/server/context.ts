@@ -1,7 +1,7 @@
 // src/server/context.ts
 import { PrismaClient } from "@prisma/client";
 
-// prevent multiple instances of Prisma in dev
+// Prevent multiple instances of Prisma in development
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
 export const prisma =

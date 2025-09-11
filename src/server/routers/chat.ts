@@ -1,17 +1,30 @@
+import { z } from "zod";
+import { router, publicProcedure } from "../trpc";
+import { generateAIResponse } from "../utils/ai";
+
 export const chatRouter = router({
+  // Create new chat session
   createSession: publicProcedure
     .input(z.object({ title: z.string().min(1, "Title is required") }))
     .mutation(async ({ ctx, input }) => {
-      return ctx.prisma.chatSession.create({ data: { title: input.title } });
+      return ctx.prisma.chatSession.create({
+        data: { title: input.title },
+      });
     }),
 
+  // Delete chat session + its messages
   deleteSession: publicProcedure
     .input(z.object({ sessionId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      await ctx.prisma.message.deleteMany({ where: { sessionId: input.sessionId } });
-      return ctx.prisma.chatSession.delete({ where: { id: input.sessionId } });
+      await ctx.prisma.message.deleteMany({
+        where: { sessionId: input.sessionId },
+      });
+      return ctx.prisma.chatSession.delete({
+        where: { id: input.sessionId },
+      });
     }),
 
+  // Send a message (USER or AI)
   sendMessage: publicProcedure
     .input(
       z.object({
@@ -21,45 +34,59 @@ export const chatRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const message = await ctx.prisma.message.create({
-        data: { sessionId: input.sessionId, content: input.message, sender: input.sender },
+      // Save user/AI message
+      const savedMessage = await ctx.prisma.message.create({
+        data: {
+          sessionId: input.sessionId,
+          content: input.message,
+          sender: input.sender,
+        },
       });
 
+      // If USER → queue AI reply
       if (input.sender === "USER") {
-        (async () => {
-          try {
-            const completion = await openai.chat.completions.create({
-              model: "gpt-4o-mini",
-              messages: [
-                { role: "system", content: "You are a helpful AI career counselor." },
-                { role: "user", content: input.message },
-              ],
-            });
+        // Create placeholder "thinking..." message
+        const placeholder = await ctx.prisma.message.create({
+          data: {
+            sessionId: input.sessionId,
+            content: "🤖 Thinking...",
+            sender: "AI",
+          },
+        });
 
-            const aiMessage = completion.choices?.[0]?.message?.content ?? "AI could not respond.";
+        // Generate AI reply in background
+        generateAIResponse(input.message)
+          .then(async (aiReply) => {
+            await ctx.prisma.message.update({
+              where: { id: placeholder.id },
+              data: { content: aiReply },
+            });
+          })
+          .catch(async (error) => {
+            const errMsg =
+              error instanceof Error ? error.message : "Unknown AI error";
+            console.error("AI generation failed:", errMsg);
 
-            await ctx.prisma.message.create({
-              data: { sessionId: input.sessionId, content: aiMessage, sender: "AI" },
+            await ctx.prisma.message.update({
+              where: { id: placeholder.id },
+              data: { content: `⚠️ AI error: ${errMsg}` },
             });
-          } catch (error: unknown) {
-            const msg = error instanceof Error ? error.message : "Unknown error";
-            console.error("OpenAI API error:", msg);
-            await ctx.prisma.message.create({
-              data: { sessionId: input.sessionId, content: `AI error: ${msg}`, sender: "AI" },
-            });
-          }
-        })();
+          });
       }
 
-      return message;
+      return savedMessage;
     }),
 
+  // Delete a single message
   deleteMessage: publicProcedure
     .input(z.object({ messageId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      return ctx.prisma.message.delete({ where: { id: input.messageId } });
+      return ctx.prisma.message.delete({
+        where: { id: input.messageId },
+      });
     }),
 
+  // Get all messages in a session
   getMessages: publicProcedure
     .input(z.object({ sessionId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
@@ -70,21 +97,25 @@ export const chatRouter = router({
 
       return messages.map((m) => ({
         ...m,
-        createdAt: new Date(m.createdAt),
-        updatedAt: new Date(m.updatedAt),
+        createdAt:
+          m.createdAt instanceof Date ? m.createdAt : new Date(m.createdAt),
+        updatedAt:
+          m.updatedAt instanceof Date ? m.updatedAt : new Date(m.updatedAt),
       }));
     }),
 
+  // List all sessions
   getSessions: publicProcedure.query(async ({ ctx }) => {
     const sessions = await ctx.prisma.chatSession.findMany({
       orderBy: { createdAt: "desc" },
     });
 
-    // Convert string timestamps to Date objects
     return sessions.map((s) => ({
       ...s,
-      createdAt: new Date(s.createdAt),
-      updatedAt: new Date(s.updatedAt),
+      createdAt:
+        s.createdAt instanceof Date ? s.createdAt : new Date(s.createdAt),
+      updatedAt:
+        s.updatedAt instanceof Date ? s.updatedAt : new Date(s.updatedAt),
     }));
   }),
 });

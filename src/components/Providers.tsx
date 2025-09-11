@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { trpc } from "@/utils/trpc";
+import { trpc } from "@/server/utils/trpc";
 import { httpBatchLink } from "@trpc/client";
 
 export const Providers: React.FC<{ children: React.ReactNode }> = ({ children }) => {
